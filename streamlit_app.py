@@ -6,7 +6,7 @@ import os
 from streamlit_folium import st_folium
 import folium
 
-# Page configs.
+# Page configs..
 st.set_page_config(page_title="MENA-VALIDATION-DASH", page_icon="💧", layout="wide")
 
 def download_and_load_data():
