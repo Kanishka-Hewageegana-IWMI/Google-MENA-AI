@@ -14,7 +14,8 @@ def download_and_load_data():
     Downloads the CSV from Google Drive if it doesn't exist locally,
     then loads it into a DataFrame. Ensures numeric columns are cast properly.
     """
-    csv_url = "https://docs.google.com/spreadsheets/d/1bi56lUGNNtF5X9n3rWCkhxoNKI84X_IB7ra7CTv2rjc/export?format=csv"
+    # csv_url = "https://docs.google.com/spreadsheets/d/1bi56lUGNNtF5X9n3rWCkhxoNKI84X_IB7ra7CTv2rjc/export?format=csv"     #Duplicates CSV
+    csv_url = "https://docs.google.com/spreadsheets/d/126prGZYRsF3V7ruKPAcoV1I4hEK-jhOM8RGWGaC9wjY/export?format=csv"       #Final CSV file
     csv_file = "mena_validation_results_dataset.csv"
 
     if not os.path.exists(csv_file):
