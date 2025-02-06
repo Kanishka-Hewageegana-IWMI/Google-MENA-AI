@@ -9,13 +9,63 @@ import folium
 # Page configs..
 st.set_page_config(page_title="MENA-VALIDATION-DASH", page_icon="💧", layout="wide")
 
+
+def display_custom_location_map(custom_lat=30.189538, custom_lon=31.417016):
+    """
+    Displays a map with custom location marker.
+    Args:
+        custom_lat (float): Latitude value for the map center
+        custom_lon (float): Longitude value for the map center
+    """
+    st.markdown("<br><hr><br>", unsafe_allow_html=True)
+    st.subheader("Custom Location Tracker")
+
+    # Create number input fields for coordinates
+    col1, col2 = st.columns(2)
+    with col1:
+        custom_lat = st.number_input("Latitude", value=custom_lat, format="%.6f")
+    with col2:
+        custom_lon = st.number_input("Longitude", value=custom_lon, format="%.6f")
+
+    # Create and display the Folium map
+    if -90 <= custom_lat <= 90 and -180 <= custom_lon <= 180:
+        m_custom = folium.Map(
+            location=[custom_lat, custom_lon],
+            zoom_start=15,
+            tiles="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+            attr="OpenStreetMap",
+        )
+
+        # Add satellite layer
+        folium.TileLayer(
+            "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+            attr="Google Satellite",
+            name="Google Satellite",
+            overlay=False,
+        ).add_to(m_custom)
+
+        # Add marker for custom location
+        folium.Marker(
+            [custom_lat, custom_lon],
+            tooltip="Custom Location"
+        ).add_to(m_custom)
+
+        # Add layer control
+        folium.LayerControl().add_to(m_custom)
+
+        # Display the map
+        st_folium(m_custom, width="100%", height=500, key="steady_custom_map")
+    else:
+        st.error("Invalid latitude/longitude range. Please enter valid coordinates.")
+
+
 def download_and_load_data():
     """
     Downloads the CSV from Google Drive if it doesn't exist locally,
     then loads it into a DataFrame. Ensures numeric columns are cast properly.
     """
     # csv_url = "https://docs.google.com/spreadsheets/d/1bi56lUGNNtF5X9n3rWCkhxoNKI84X_IB7ra7CTv2rjc/export?format=csv"     #Duplicates CSV
-    csv_url = "https://docs.google.com/spreadsheets/d/126prGZYRsF3V7ruKPAcoV1I4hEK-jhOM8RGWGaC9wjY/export?format=csv"       #Final CSV file
+    csv_url = "https://docs.google.com/spreadsheets/d/1f9fH4NTOaWnff9RIT-CPcwSsVPKkMKgO5cVhznUhKsE/export?format=csv"       #Final CSV file
     csv_file = "mena_validation_results_dataset.csv"
 
     if not os.path.exists(csv_file):
@@ -58,14 +108,14 @@ def apply_filters(df, selected_countries, selected_orbis):
     """
     return df[df["country"].isin(selected_countries) & df["is_wwtp"].isin(selected_orbis)]
 
-def display_row_validation(filtered_data_for_validation):
+def display_row_validation(filtered_data_val):
     """
     Displays row-by-row validation with editable fields and accept/reject buttons.
     """
-    for idx, row in filtered_data_for_validation.iterrows():
+    for idx, row in filtered_data_val.iterrows():
         st.markdown("---")
         st.write(f"**Row Index** - {idx}")
-        st.write(f"**Source Name** - {row['new_name']}")
+        st.write(f"**Source Name** - {row['source_name']}")
 
         url_link = row.get("url_image", None)
         if url_link and isinstance(url_link, str) and url_link.startswith("http"):
@@ -98,7 +148,7 @@ def display_row_validation(filtered_data_for_validation):
 
                 folium.Marker(
                     [lat, lon],
-                    tooltip=f"{row['new_name']}"
+                    tooltip=f"{row['source_name']}"
                 ).add_to(m)
 
                 st_folium(m, width="100%", height=800, key=f"map_{idx}")
@@ -131,20 +181,20 @@ def display_row_validation(filtered_data_for_validation):
                         )
 
                     save_dataframe(st.session_state.df)
-                    st.success(f"Source {row['new_name']} updated successfully!")
+                    st.success(f"Source {row['source_name']} updated successfully!")
 
         col1, col2 = st.columns(2)
         with col1:
             if st.button("Rejected", key=f"reject_{idx}"):
                 st.session_state.df.loc[idx, "Validation_Status"] = "Rejected"
                 save_dataframe(st.session_state.df)
-                st.success(f"Source {row['new_name']} Rejected")
+                st.success(f"Source {row['source_name']} Rejected")
 
         with col2:
             if st.button("Accepted", key=f"accept_{idx}"):
                 st.session_state.df.loc[idx, "Validation_Status"] = "Accepted"
                 save_dataframe(st.session_state.df)
-                st.success(f"Source {row['new_name']} Accepted")
+                st.success(f"Source {row['source_name']} Accepted")
 
 def display_general_insights(filtered_data):
     """
@@ -168,12 +218,12 @@ def display_general_insights(filtered_data):
     except Exception as e:
         st.error(f"Error creating plots: {e}")
 
-def display_locations(filtered_data_for_validation):
+def display_locations(filtered_data_val):
     """
     Displays the locations of the current validation on a map.
     """
     st.subheader("Locations of Current Validation")
-    valid_coords_map = filtered_data_for_validation.dropna(subset=["latitude", "longitude"])
+    valid_coords_map = filtered_data_val.dropna(subset=["latitude", "longitude"])
 
     if not valid_coords_map.empty:
         map_data = valid_coords_map[['latitude', 'longitude']]
@@ -181,15 +231,16 @@ def display_locations(filtered_data_for_validation):
     else:
         st.write("No valid latitude/longitude found for the current validation.")
 
+
 def main():
-    """
-    Main function to run the Streamlit app.
-    """
     if "df" not in st.session_state:
         st.session_state.df = download_and_load_data()
 
     df = st.session_state.df
+
     st.title("WWTP Validation Dashboard")
+    display_custom_location_map()
+
     st.sidebar.header("Filters")
 
     # Country filter
@@ -206,17 +257,18 @@ def main():
     max_index = len(filtered_data)
     st.sidebar.write(f"Data has {max_index} rows after filtering.")
     start_idx = st.sidebar.number_input("Start Row Index", min_value=0, max_value=max_index, value=0, step=1)
-    end_idx = st.sidebar.number_input("End Row Index", min_value=0, max_value=max_index, value=min(10, max_index), step=1)
+    end_idx = st.sidebar.number_input("End Row Index", min_value=0, max_value=max_index, value=min(10, max_index),
+                                      step=1)
 
     if start_idx >= end_idx:
         st.sidebar.error("Please set Start Row Value < End Row Value.")
-        filtered_data_for_validation = pd.DataFrame()
+        filtered_data_val = pd.DataFrame()
     else:
-        filtered_data_for_validation = filtered_data.iloc[start_idx:end_idx]
+        filtered_data_val = filtered_data.iloc[start_idx:end_idx]
 
-    display_row_validation(filtered_data_for_validation)
+    display_row_validation(filtered_data_val)
     display_general_insights(filtered_data)
-    display_locations(filtered_data_for_validation)
+    display_locations(filtered_data_val)
 
 if __name__ == "__main__":
     main()
