@@ -5,67 +5,79 @@ import requests
 import os
 from streamlit_folium import st_folium
 import folium
+import base64
+import math
 
-# Page configs..
+
 st.set_page_config(page_title="MENA-VALIDATION-DASH", page_icon="💧", layout="wide")
 
-
-def display_custom_location_map(custom_lat=30.189538, custom_lon=31.417016):
+# ------------------------------------------------------------------------------
+#                          GitHub Commit Helper Function
+# ------------------------------------------------------------------------------
+def commit_file_to_github(content_bytes,
+                          repo="Kanishka-Hewageegana-IWMI/Google-MENA-AI",
+                          path="mena_validation_results_dataset.csv",
+                          branch="main",
+                          commit_message="Update CSV from Streamlit"):
     """
-    Displays a map with custom location marker.
-    Args:
-        custom_lat (float): Latitude value for the map center
-        custom_lon (float): Longitude value for the map center
+    Commits a file to a GitHub repo using the GitHub REST API.
     """
-    st.markdown("<br><hr><br>", unsafe_allow_html=True)
-    st.subheader("Custom Location Tracker")
+    token = st.secrets["GITHUB_TOKEN"]  # Ensure your token is in Streamlit secrets
+    url = f"https://api.github.com/repos/{repo}/contents/{path}"
+    headers = {"Authorization": f"Bearer {token}"}
 
-    # Create number input fields for coordinates
-    col1, col2 = st.columns(2)
-    with col1:
-        custom_lat = st.number_input("Latitude", value=custom_lat, format="%.6f")
-    with col2:
-        custom_lon = st.number_input("Longitude", value=custom_lon, format="%.6f")
-
-    # Create and display the Folium map
-    if -90 <= custom_lat <= 90 and -180 <= custom_lon <= 180:
-        m_custom = folium.Map(
-            location=[custom_lat, custom_lon],
-            zoom_start=15,
-            tiles="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-            attr="OpenStreetMap",
-        )
-
-        # Add satellite layer
-        folium.TileLayer(
-            "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
-            attr="Google Satellite",
-            name="Google Satellite",
-            overlay=False,
-        ).add_to(m_custom)
-
-        # Add marker for custom location
-        folium.Marker(
-            [custom_lat, custom_lon],
-            tooltip="Custom Location"
-        ).add_to(m_custom)
-
-        # Add layer control
-        folium.LayerControl().add_to(m_custom)
-
-        # Display the map
-        st_folium(m_custom, width="100%", height=500, key="steady_custom_map")
+    # 1) Get the current file's SHA if it exists
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        sha = response.json().get("sha")
     else:
-        st.error("Invalid latitude/longitude range. Please enter valid coordinates.")
+        sha = None
 
+    # 2) Encode CSV content to base64
+    content_encoded = base64.b64encode(content_bytes).decode("utf-8")
+
+    # 3) Prepare the JSON payload
+    data = {
+        "message": commit_message,
+        "branch": branch,
+        "content": content_encoded,
+    }
+    if sha:
+        data["sha"] = sha
+
+    # 4) Commit (PUT) the file
+    put_response = requests.put(url, headers=headers, json=data)
+    if put_response.status_code in [200, 201]:
+        st.success("File committed to GitHub successfully!")
+    else:
+        st.error(f"Failed to commit file to GitHub: {put_response.text}")
+
+
+# ------------------------------------------------------------------------------
+#                               Helper Functions
+# ------------------------------------------------------------------------------
+def haversine_distance(lat1, lon1, lat2, lon2):
+    """
+    Returns the distance in kilometers between two latitude/longitude points
+    using the Haversine formula.
+    """
+    R = 6371.0  # Earth radius in km
+    d_lat = math.radians(lat2 - lat1)
+    d_lon = math.radians(lat2 - lon1)
+    a = (math.sin(d_lat / 2)**2
+         + math.cos(math.radians(lat1))
+         * math.cos(math.radians(lat2))
+         * math.sin(d_lon / 2)**2)
+    c = 2 * math.asin(math.sqrt(a))
+    return R * c
 
 def download_and_load_data():
     """
     Downloads the CSV from Google Drive if it doesn't exist locally,
     then loads it into a DataFrame. Ensures numeric columns are cast properly.
     """
-    # csv_url = "https://docs.google.com/spreadsheets/d/1bi56lUGNNtF5X9n3rWCkhxoNKI84X_IB7ra7CTv2rjc/export?format=csv"     #Duplicates CSV
-    csv_url = "https://docs.google.com/spreadsheets/d/1f9fH4NTOaWnff9RIT-CPcwSsVPKkMKgO5cVhznUhKsE/export?format=csv"       #Final CSV file
+    # csv_url = "https://docs.google.com/spreadsheets/d/1f9fH4NTOaWnff9RIT-CPcwSsVPKkMKgO5cVhznUhKsE/export?format=csv" #Production
+    csv_url  = "https://docs.google.com/spreadsheets/d/1Sh4X-rSKoHd4oFqLotyCAhdxN9a3yGOW-cv4Nf6StKk/export?format=csv"  #Validation
     csv_file = "mena_validation_results_dataset.csv"
 
     if not os.path.exists(csv_file):
@@ -78,7 +90,7 @@ def download_and_load_data():
             return pd.DataFrame()
 
     df_temp = pd.read_csv(csv_file, encoding="latin1")
-    numeric_cols = [  # Pre-processing
+    numeric_cols = [
         "circular_tank_count",
         "rectangular_tank_count",
         "desgin_capacity_m3_yr",
@@ -102,15 +114,66 @@ def save_dataframe(df):
     df.to_csv("mena_validation_results_dataset.csv", index=False)
     st.success("CSV updated successfully!")
 
+    # --------------------------------------------------------------------------
+    #                        Commit changes to GitHub
+    # --------------------------------------------------------------------------
+    csv_content = df.to_csv(index=False).encode('utf-8')
+    commit_file_to_github(csv_content)
+
 def apply_filters(df, selected_countries, selected_orbis):
-    """
-    Applies filters to the DataFrame based on selected countries and WWTP classification.
-    """
     return df[df["country"].isin(selected_countries) & df["is_wwtp"].isin(selected_orbis)]
 
+def display_custom_location_map(custom_lat=30.189538, custom_lon=31.417016):
+
+    st.markdown("<br><hr><br>", unsafe_allow_html=True)
+    st.subheader("Custom Location Tracker")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        custom_lat = st.number_input("Latitude", value=custom_lat, format="%.6f")
+    with col2:
+        custom_lon = st.number_input("Longitude", value=custom_lon, format="%.6f")
+
+    # map layer
+    if -90 <= custom_lat <= 90 and -180 <= custom_lon <= 180:
+        m_custom = folium.Map(
+            location=[custom_lat, custom_lon],
+            zoom_start=15,
+            tiles="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+            attr="OpenStreetMap",
+        )
+
+        # satellite layer
+        folium.TileLayer(
+            "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+            attr="Google Satellite",
+            name="Google Satellite",
+            overlay=False,
+        ).add_to(m_custom)
+
+        # Marker for custom location
+        folium.Marker(
+            [custom_lat, custom_lon],
+            tooltip="Custom Location"
+        ).add_to(m_custom)
+        folium.LayerControl().add_to(m_custom)
+        st_folium(m_custom, width="100%", height=500, key="steady_custom_map")
+    else:
+        st.error("Invalid latitude/longitude range. Please enter valid coordinates.")
+
+# ------------------------------------------------------------------------------
+#          Main Row-by-Row Validation (with 5km circle + user click)
+# ------------------------------------------------------------------------------
 def display_row_validation(filtered_data_val):
     """
-    Displays row-by-row validation with editable fields and accept/reject buttons.
+    For each row in the filtered data slice:
+      - Show a map centered on that row's lat/lon
+      - Draw a dynamic km range circle
+      - Mark the row itself differently
+      - Show neighbors within the dynamic circle
+      - ALLOW THE USER TO CLICK on the map to pick a new lat/lng
+      - Provide an editable form
+      - Provide Accept/Reject buttons
     """
     for idx, row in filtered_data_val.iterrows():
         st.markdown("---")
@@ -130,33 +193,64 @@ def display_row_validation(filtered_data_val):
         except (ValueError, TypeError):
             lat, lon = None, None
 
-        if lat is not None and lon is not None:
-            if -90 <= lat <= 90 and -180 <= lon <= 180:
-                m = folium.Map(
-                    location=[lat, lon],
-                    zoom_start=100,
-                    tiles="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-                    attr="OpenStreetMap",
-                )
+        if lat is not None and lon is not None and -90 <= lat <= 90 and -180 <= lon <= 180:
+            m = folium.Map(
+                location=[lat, lon],
+                zoom_start=80,
+                tiles="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+                attr="OpenStreetMap",
+            )
 
-                folium.TileLayer(
-                    "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
-                    attr="Google",
-                    name="Google Satellite",
-                    overlay=False,
-                ).add_to(m)
+            # satellite layer
+            folium.TileLayer(
+                "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+                attr="Google Satellite",
+                name="Google Satellite",
+                overlay=False,
+            ).add_to(m)
 
-                folium.Marker(
-                    [lat, lon],
-                    tooltip=f"{row['source_name']}"
-                ).add_to(m)
+            # dynamic km circle
+            folium.Circle(
+                radius=5000,  # 5 km
+                location=[lat, lon],
+                color="blue",
+                fill=True,
+                fill_opacity=0.10
+            ).add_to(m)
 
-                st_folium(m, width="100%", height=800, key=f"map_{idx}")
-            else:
-                st.write("Invalid lat/lon range for mapping.")
+            # Main red marker
+            main_tooltip = f"Index: {idx}, Source: {row['source_name']} (Main)"
+            folium.Marker(
+                location=[lat, lon],
+                tooltip=main_tooltip,
+                icon=folium.Icon(color="red", icon="")
+            ).add_to(m)
+            folium.LatLngPopup().add_to(m)  # Add LatLngPopup ----> Let user click to see lat & lng
+
+            # Marking neighbors within 5km
+            df_all = st.session_state.df.dropna(subset=["latitude","longitude"])
+            for i2, row2 in df_all.iterrows():
+                lat2 = row2["latitude"]
+                lon2 = row2["longitude"]
+                if pd.notnull(lat2) and pd.notnull(lon2):
+                    dist = haversine_distance(lat, lon, lat2, lon2)
+                    if dist <= 5.0 and i2 != idx:
+                        tooltip_text = f"Index: {i2}, Source: {row2['source_name']}"
+                        folium.Marker(
+                            location=[lat2, lon2],
+                            tooltip=tooltip_text,
+                            icon=folium.Icon(color="blue" , icon=""),
+                        ).add_to(m)
+
+            # Layer control
+            folium.LayerControl().add_to(m)
+            map_data = st_folium(m, width="100%", height=600, key=f"map_{idx}")
         else:
             st.write("Invalid or missing lat/lon for mapping.")
 
+        # ------------------------------------------------------------------------------
+        #                         Expandable editor for each row
+        # ------------------------------------------------------------------------------
         with st.expander("Editable Row Details"):
             with st.form(f"edit_form_{idx}"):
                 updated_values = {}
@@ -168,7 +262,7 @@ def display_row_validation(filtered_data_val):
                     for col_name, val in updated_values.items():
                         st.session_state.df.loc[idx, col_name] = val
 
-                    numeric_cols = [  # Double check
+                    numeric_cols = [
                         "circular_tank_count",
                         "rectangular_tank_count",
                         "desgin_capacity_m3_yr",
@@ -183,6 +277,9 @@ def display_row_validation(filtered_data_val):
                     save_dataframe(st.session_state.df)
                     st.success(f"Source {row['source_name']} updated successfully!")
 
+        # ------------------------------------------------------------------------------
+        #                           Acceptance / Rejection Buttons
+        # ------------------------------------------------------------------------------
         col1, col2 = st.columns(2)
         with col1:
             if st.button("Rejected", key=f"reject_{idx}"):
@@ -196,6 +293,9 @@ def display_row_validation(filtered_data_val):
                 save_dataframe(st.session_state.df)
                 st.success(f"Source {row['source_name']} Accepted")
 
+# ------------------------------------------------------------------------------
+#                                General Insights
+# ------------------------------------------------------------------------------
 def display_general_insights(filtered_data):
     """
     Displays general insights and statistics about the filtered data.
@@ -220,7 +320,8 @@ def display_general_insights(filtered_data):
 
 def display_locations(filtered_data_val):
     """
-    Displays the locations of the current validation on a map.
+    Displays the locations of the current validation rows on a simple map using st.map().
+    (Note: st.map() doesn't provide color-coding or advanced styling like Folium)
     """
     st.subheader("Locations of Current Validation")
     valid_coords_map = filtered_data_val.dropna(subset=["latitude", "longitude"])
@@ -230,7 +331,6 @@ def display_locations(filtered_data_val):
         st.map(map_data)
     else:
         st.write("No valid latitude/longitude found for the current validation.")
-
 
 def main():
     if "df" not in st.session_state:
@@ -245,20 +345,24 @@ def main():
 
     # Country filter
     all_countries = sorted(df["country"].dropna().unique().tolist())
-    selected_countries = st.sidebar.multiselect("Select Country", options=all_countries, default=all_countries)
+    selected_countries = st.sidebar.multiselect("Select Country",
+                                                options=all_countries,
+                                                default=all_countries)
 
     # Filter by classification
     all_orbis = sorted(df["is_wwtp"].dropna().unique().tolist())
-    selected_orbis = st.sidebar.multiselect("Filter WWTP", options=all_orbis, default=all_orbis)
+    selected_orbis = st.sidebar.multiselect("Filter WWTP",
+                                            options=all_orbis,
+                                            default=all_orbis)
 
-    # Apply filters
     filtered_data = apply_filters(df, selected_countries, selected_orbis)
 
     max_index = len(filtered_data)
     st.sidebar.write(f"Data has {max_index} rows after filtering.")
-    start_idx = st.sidebar.number_input("Start Row Index", min_value=0, max_value=max_index, value=0, step=1)
-    end_idx = st.sidebar.number_input("End Row Index", min_value=0, max_value=max_index, value=min(10, max_index),
-                                      step=1)
+    start_idx = st.sidebar.number_input("Start Row Index", min_value=0,
+                                        max_value=max_index, value=0, step=1)
+    end_idx = st.sidebar.number_input("End Row Index", min_value=0,
+                                      max_value=max_index, value=min(10, max_index), step=1)
 
     if start_idx >= end_idx:
         st.sidebar.error("Please set Start Row Value < End Row Value.")
