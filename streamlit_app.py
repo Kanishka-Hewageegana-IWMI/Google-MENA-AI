@@ -11,7 +11,7 @@ import math
 st.set_page_config(page_title="MENA-VALIDATION-DASH", page_icon="💧", layout="wide")
 
 # ------------------------------------------------------------------------------
-#                          GitHub Commit Helper Function
+#                      GitHub Commit Helper Function
 # ------------------------------------------------------------------------------
 def commit_file_to_github(content_bytes,
                           repo="Kanishka-Hewageegana-IWMI/Google-MENA-AI",
@@ -20,25 +20,30 @@ def commit_file_to_github(content_bytes,
                           commit_message="Update CSV from Streamlit"):
     """
     Commits a file to a GitHub repo using the GitHub REST API.
+    If the file does not exist (HTTP 404), it creates a new file.
     """
-    token = st.secrets["GITHUB_TOKEN"]  # Ensure your token is in Streamlit secrets
+    token = st.secrets["GITHUB_TOKEN"]
     url = f"https://api.github.com/repos/{repo}/contents/{path}"
     headers = {"Authorization": f"Bearer {token}"}
 
-    #Get the current file's SHA if it exists
+
     response = requests.get(url, headers=headers)
     if response.status_code == 200:
         sha = response.json().get("sha")
-    else:
+    elif response.status_code == 404:
         sha = None
+    else:
+        st.error(f"Error checking file existence on GitHub: {response.status_code}")
+        return
 
+    # Encode the file content in base64 as required by GitHub
     content_encoded = base64.b64encode(content_bytes).decode("utf-8")
     data = {
         "message": commit_message,
         "branch": branch,
         "content": content_encoded,
     }
-    if sha:
+    if sha is not None:
         data["sha"] = sha
 
     put_response = requests.put(url, headers=headers, json=data)
@@ -51,7 +56,6 @@ def commit_file_to_github(content_bytes,
 #                               Helper Functions
 # ------------------------------------------------------------------------------
 def haversine_distance(lat1, lon1, lat2, lon2):
-
     R = 6371.0  # Earth radius in km
     d_lat = math.radians(lat2 - lat1)
     d_lon = math.radians(lon2 - lon1)
@@ -100,10 +104,17 @@ def download_and_load_data():
 def save_dataframe(df):
     """
     Saves the given DataFrame to a local CSV file.
-    Then the user can safely get the edited csv without damaging the original
+    Then commits the updated CSV to GitHub. This way, if the CSV does not
+    already exist on GitHub, it will be created there.
     """
-    df.to_csv("mena_validation_results_dataset.csv", index=False)
-    st.success("CSV updated successfully!")
+    local_csv = "mena_validation_results_dataset.csv"
+    df.to_csv(local_csv, index=False)
+    st.success("CSV updated locally!")
+
+    # Read the saved CSV and commit it to GitHub
+    with open(local_csv, "rb") as f:
+        content_bytes = f.read()
+    commit_file_to_github(content_bytes)
 
 def apply_filters(df, selected_countries, selected_orbis, selected_sources):
     """
@@ -217,7 +228,7 @@ def display_row_validation(filtered_data_val):
                 icon=folium.Icon(color="red", icon="")
             ).add_to(m)
 
-            folium.LatLngPopup().add_to(m)  #---> LatLngPopup to let user click and see lat & lng
+            folium.LatLngPopup().add_to(m)  # Allows user to click and see lat & lng
 
             df_all = st.session_state.df.dropna(subset=["latitude", "longitude"])
             for i2, row2 in df_all.iterrows():
@@ -333,28 +344,28 @@ def main():
 
     st.sidebar.header("Filters")
 
-    #Country filter
+    # Country filter
     all_countries = sorted(df["country"].dropna().unique().tolist())
     selected_countries = st.sidebar.multiselect("Select Country",
                                                 options=all_countries,
                                                 default=all_countries)
 
-    #Filter by classification (WWTP)
+    # Filter by classification (WWTP)
     all_orbis = sorted(df["is_wwtp"].dropna().unique().tolist())
     selected_orbis = st.sidebar.multiselect("Filter WWTP",
                                             options=all_orbis,
                                             default=all_orbis)
 
-    #Source filter
+    # Source filter
     all_sources = sorted(df["source"].dropna().unique().tolist())
     selected_sources = st.sidebar.multiselect("Select Source",
                                               options=all_sources,
                                               default=all_sources)
 
-    #Apply the filters
+    # Apply the filters
     filtered_data = apply_filters(df, selected_countries, selected_orbis, selected_sources)
 
-    #Pagination
+    # Pagination
     max_index = len(filtered_data)
     st.sidebar.write(f"Data has {max_index} rows after filtering.")
     start_idx = st.sidebar.number_input("Start Row Index", min_value=0,
