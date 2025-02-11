@@ -8,7 +8,6 @@ import folium
 import base64
 import math
 
-
 st.set_page_config(page_title="MENA-VALIDATION-DASH", page_icon="💧", layout="wide")
 
 # ------------------------------------------------------------------------------
@@ -26,17 +25,14 @@ def commit_file_to_github(content_bytes,
     url = f"https://api.github.com/repos/{repo}/contents/{path}"
     headers = {"Authorization": f"Bearer {token}"}
 
-    # 1) Get the current file's SHA if it exists
+    #Get the current file's SHA if it exists
     response = requests.get(url, headers=headers)
     if response.status_code == 200:
         sha = response.json().get("sha")
     else:
         sha = None
 
-    # 2) Encode CSV content to base64
     content_encoded = base64.b64encode(content_bytes).decode("utf-8")
-
-    # 3) Prepare the JSON payload
     data = {
         "message": commit_message,
         "branch": branch,
@@ -45,25 +41,20 @@ def commit_file_to_github(content_bytes,
     if sha:
         data["sha"] = sha
 
-    # 4) Commit (PUT) the file
     put_response = requests.put(url, headers=headers, json=data)
     if put_response.status_code in [200, 201]:
         st.success("File committed to GitHub successfully!")
     else:
         st.error(f"Failed to commit file to GitHub: {put_response.text}")
 
-
 # ------------------------------------------------------------------------------
 #                               Helper Functions
 # ------------------------------------------------------------------------------
 def haversine_distance(lat1, lon1, lat2, lon2):
-    """
-    Returns the distance in kilometers between two latitude/longitude points
-    using the Haversine formula.
-    """
+
     R = 6371.0  # Earth radius in km
     d_lat = math.radians(lat2 - lat1)
-    d_lon = math.radians(lat2 - lon1)
+    d_lon = math.radians(lon2 - lon1)
     a = (math.sin(d_lat / 2)**2
          + math.cos(math.radians(lat1))
          * math.cos(math.radians(lat2))
@@ -114,17 +105,17 @@ def save_dataframe(df):
     df.to_csv("mena_validation_results_dataset.csv", index=False)
     st.success("CSV updated successfully!")
 
-    # --------------------------------------------------------------------------
-    #                        Commit changes to GitHub
-    # --------------------------------------------------------------------------
-    csv_content = df.to_csv(index=False).encode('utf-8')
-    commit_file_to_github(csv_content)
-
-def apply_filters(df, selected_countries, selected_orbis):
-    return df[df["country"].isin(selected_countries) & df["is_wwtp"].isin(selected_orbis)]
+def apply_filters(df, selected_countries, selected_orbis, selected_sources):
+    """
+    Filters the DataFrame by selected countries, WWTP classification, and source.
+    """
+    return df[
+        df["country"].isin(selected_countries) &
+        df["is_wwtp"].isin(selected_orbis) &
+        df["source"].isin(selected_sources)
+    ]
 
 def display_custom_location_map(custom_lat=30.189538, custom_lon=31.417016):
-
     st.markdown("<br><hr><br>", unsafe_allow_html=True)
     st.subheader("Custom Location Tracker")
 
@@ -162,7 +153,7 @@ def display_custom_location_map(custom_lat=30.189538, custom_lon=31.417016):
         st.error("Invalid latitude/longitude range. Please enter valid coordinates.")
 
 # ------------------------------------------------------------------------------
-#          Main Row-by-Row Validation (with 5km circle + user click)
+#          Main Row-by-Row Validation (5km circle + user click)
 # ------------------------------------------------------------------------------
 def display_row_validation(filtered_data_val):
     """
@@ -196,7 +187,7 @@ def display_row_validation(filtered_data_val):
         if lat is not None and lon is not None and -90 <= lat <= 90 and -180 <= lon <= 180:
             m = folium.Map(
                 location=[lat, lon],
-                zoom_start=80,
+                zoom_start=15,
                 tiles="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
                 attr="OpenStreetMap",
             )
@@ -225,10 +216,10 @@ def display_row_validation(filtered_data_val):
                 tooltip=main_tooltip,
                 icon=folium.Icon(color="red", icon="")
             ).add_to(m)
-            folium.LatLngPopup().add_to(m)  # Add LatLngPopup ----> Let user click to see lat & lng
 
-            # Marking neighbors within 5km
-            df_all = st.session_state.df.dropna(subset=["latitude","longitude"])
+            folium.LatLngPopup().add_to(m)  #---> LatLngPopup to let user click and see lat & lng
+
+            df_all = st.session_state.df.dropna(subset=["latitude", "longitude"])
             for i2, row2 in df_all.iterrows():
                 lat2 = row2["latitude"]
                 lon2 = row2["longitude"]
@@ -239,12 +230,12 @@ def display_row_validation(filtered_data_val):
                         folium.Marker(
                             location=[lat2, lon2],
                             tooltip=tooltip_text,
-                            icon=folium.Icon(color="blue" , icon=""),
+                            icon=folium.Icon(color="blue", icon=""),
                         ).add_to(m)
 
             # Layer control
             folium.LayerControl().add_to(m)
-            map_data = st_folium(m, width="100%", height=600, key=f"map_{idx}")
+            st_folium(m, width="100%", height=600, key=f"map_{idx}")
         else:
             st.write("Invalid or missing lat/lon for mapping.")
 
@@ -278,7 +269,7 @@ def display_row_validation(filtered_data_val):
                     st.success(f"Source {row['source_name']} updated successfully!")
 
         # ------------------------------------------------------------------------------
-        #                           Acceptance / Rejection Buttons
+        #                     Acceptance / Rejection Buttons
         # ------------------------------------------------------------------------------
         col1, col2 = st.columns(2)
         with col1:
@@ -314,7 +305,6 @@ def display_general_insights(filtered_data):
         if "rectangular_tank_count" in filtered_data.columns and filtered_data["rectangular_tank_count"].notna().any():
             st.write("Rectangular Tank Count Distribution")
             st.bar_chart(filtered_data["rectangular_tank_count"].value_counts())
-
     except Exception as e:
         st.error(f"Error creating plots: {e}")
 
@@ -343,20 +333,28 @@ def main():
 
     st.sidebar.header("Filters")
 
-    # Country filter
+    #Country filter
     all_countries = sorted(df["country"].dropna().unique().tolist())
     selected_countries = st.sidebar.multiselect("Select Country",
                                                 options=all_countries,
                                                 default=all_countries)
 
-    # Filter by classification
+    #Filter by classification (WWTP)
     all_orbis = sorted(df["is_wwtp"].dropna().unique().tolist())
     selected_orbis = st.sidebar.multiselect("Filter WWTP",
                                             options=all_orbis,
                                             default=all_orbis)
 
-    filtered_data = apply_filters(df, selected_countries, selected_orbis)
+    #Source filter
+    all_sources = sorted(df["source"].dropna().unique().tolist())
+    selected_sources = st.sidebar.multiselect("Select Source",
+                                              options=all_sources,
+                                              default=all_sources)
 
+    #Apply the filters
+    filtered_data = apply_filters(df, selected_countries, selected_orbis, selected_sources)
+
+    #Pagination
     max_index = len(filtered_data)
     st.sidebar.write(f"Data has {max_index} rows after filtering.")
     start_idx = st.sidebar.number_input("Start Row Index", min_value=0,
