@@ -72,7 +72,7 @@ def download_and_load_data():
     then loads it into a DataFrame. Ensures numeric columns are cast properly.
     """
     # csv_url = "https://docs.google.com/spreadsheets/d/1f9fH4NTOaWnff9RIT-CPcwSsVPKkMKgO5cVhznUhKsE/export?format=csv" #Production
-    csv_url  = "https://docs.google.com/spreadsheets/d/1ZJKD80-jewHtn6YAVdcAB9D1ZUYgTnPMOsZZp6cFh28/export?format=csv"  #Validation
+    csv_url  = "https://docs.google.com/spreadsheets/d/1FR2s6GENLXRyfcTekLaa0aTtrskymD-lCYSBhDW2neE/export?format=csv"  #Validation
     csv_file = "mena_validation_results_dataset.csv"
 
     if not os.path.exists(csv_file):
@@ -89,6 +89,11 @@ def download_and_load_data():
         "circular_tank_count",
         "rectangular_tank_count",
         "desgin_capacity_m3_yr",
+        "desgin_capacity_m3_day",
+        "average_capacity_m3_day",
+        "average_capacity_m3_yr",
+        "volume_of__ww_actually_treated_m3_yr",
+        "amount_disposed_m3_yr",
         "latitude",
         "longitude"
     ]
@@ -285,8 +290,13 @@ def display_row_validation(filtered_data_val):
                         "circular_tank_count",
                         "rectangular_tank_count",
                         "desgin_capacity_m3_yr",
+                        "desgin_capacity_m3_day",
+                        "average_capacity_m3_day",
+                        "average_capacity_m3_yr",
+                        "volume_of__ww_actually_treated_m3_yr",
+                        "amount_disposed_m3_yr",
                         "latitude",
-                        "longitude",
+                        "longitude"
                     ]
                     for col in numeric_cols:
                         st.session_state.df[col] = pd.to_numeric(
