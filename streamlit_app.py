@@ -72,7 +72,7 @@ def download_and_load_data():
     then loads it into a DataFrame. Ensures numeric columns are cast properly.
     """
     # csv_url = "https://docs.google.com/spreadsheets/d/1f9fH4NTOaWnff9RIT-CPcwSsVPKkMKgO5cVhznUhKsE/export?format=csv" #Production
-    csv_url  = "https://docs.google.com/spreadsheets/d/1Sh4X-rSKoHd4oFqLotyCAhdxN9a3yGOW-cv4Nf6StKk/export?format=csv"  #Validation
+    csv_url  = "https://docs.google.com/spreadsheets/d/1ZJKD80-jewHtn6YAVdcAB9D1ZUYgTnPMOsZZp6cFh28/export?format=csv"  #Validation
     csv_file = "mena_validation_results_dataset.csv"
 
     if not os.path.exists(csv_file):
@@ -228,7 +228,7 @@ def display_row_validation(filtered_data_val):
                 icon=folium.Icon(color="red", icon="")
             ).add_to(m)
 
-            folium.LatLngPopup().add_to(m)  # Allows user to click and see lat & lng
+            folium.LatLngPopup().add_to(m)
 
             df_all = st.session_state.df.dropna(subset=["latitude", "longitude"])
             for i2, row2 in df_all.iterrows():
@@ -250,15 +250,32 @@ def display_row_validation(filtered_data_val):
         else:
             st.write("Invalid or missing lat/lon for mapping.")
 
-        # ------------------------------------------------------------------------------
+        # -------------------------------------------------------------------------
         #                         Expandable editor for each row
-        # ------------------------------------------------------------------------------
+        # -------------------------------------------------------------------------
         with st.expander("Editable Row Details"):
             with st.form(f"edit_form_{idx}"):
                 updated_values = {}
+
                 for col_name in row.index:
-                    current_val = str(row[col_name])
-                    updated_values[col_name] = st.text_input(col_name, current_val)
+                    current_val = str(row[col_name]) if pd.notnull(row[col_name]) else ""
+
+                    if col_name in ["technology_classification", "technology_type"]:
+                        unique_vals = (
+                            st.session_state.df[col_name]
+                            .dropna()
+                            .unique()
+                            .tolist()
+                        )
+
+                        selected_options = st.multiselect(
+                            col_name,
+                            options=unique_vals,
+                            default=[]
+                        )
+                        updated_values[col_name] = ",".join(selected_options)
+                    else:
+                        updated_values[col_name] = st.text_input(col_name, current_val)
 
                 if st.form_submit_button("Save Row Changes"):
                     for col_name, val in updated_values.items():
@@ -279,9 +296,9 @@ def display_row_validation(filtered_data_val):
                     save_dataframe(st.session_state.df)
                     st.success(f"Source {row['source_name']} updated successfully!")
 
-        # ------------------------------------------------------------------------------
+        # -------------------------------------------------------------------------
         #                     Acceptance / Rejection Buttons
-        # ------------------------------------------------------------------------------
+        # -------------------------------------------------------------------------
         col1, col2 = st.columns(2)
         with col1:
             if st.button("Rejected", key=f"reject_{idx}"):
